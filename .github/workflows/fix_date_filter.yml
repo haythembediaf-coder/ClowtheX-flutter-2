@@ -1,94 +1,22 @@
-name: Fix SQL Date Filter Performance
+name: Build and Fix Flutter App
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
 
-# ✅ FIX: Grant write permissions for git push
 permissions:
   contents: write
 
 jobs:
-  fix:
+  build:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          # ✅ FIX: persist-credentials for git push
-          persist-credentials: false
-
-      - name: Apply SQL date filter fix
-        run: |
-          python3 << 'PYEOF'
-          import re
-
-          # ============================================================
-          # FIX: إضافة LIMIT لـ getSalesByDateRange كحماية مستقبلية
-          # ============================================================
-          with open('lib/services/sale_service.dart', 'r') as f:
-              content = f.read()
-
-          old = """  Future<List<Sale>> getSalesByDateRange(DateTime from, DateTime to) async {
-              final rows = await _db.rawQuery(\'\'\'
-                SELECT * FROM ${AppConstants.tableSales}
-                WHERE created_at BETWEEN ? AND ?
-                ORDER BY created_at DESC
-              \'\'\', [from.toIso8601String(), to.toIso8601String()]);
-              return rows.map((r) => Sale.fromMap(r)).toList();
-            }"""
-
-          new = """  Future<List<Sale>> getSalesByDateRange(
-              DateTime from,
-              DateTime to, {
-              int limit = 2000,  // حماية: أقصى 2000 فاتورة لأي نطاق زمني
-            }) async {
-              final rows = await _db.rawQuery(\'\'\'
-                SELECT * FROM ${AppConstants.tableSales}
-                WHERE created_at BETWEEN ? AND ?
-                ORDER BY created_at DESC
-                LIMIT ?
-              \'\'\', [from.toIso8601String(), to.toIso8601String(), limit]);
-              return rows.map((r) => Sale.fromMap(r)).toList();
-            }"""
-
-          if old in content:
-              content = content.replace(old, new)
-              print("✅ getSalesByDateRange: LIMIT added")
-          else:
-              # fallback: فقط أضف LIMIT في الاستعلام
-              content = content.replace(
-                  'ORDER BY created_at DESC\n    \'\'\'',
-                  'ORDER BY created_at DESC\n    LIMIT 2000\n    \'\'\''
-              )
-              print("✅ getSalesByDateRange: LIMIT 2000 added (fallback)")
-
-          with open('lib/services/sale_service.dart', 'w') as f:
-              f.write(content)
-
-          # ============================================================
-          # تحقق نهائي
-          # ============================================================
-          with open('lib/services/sale_service.dart') as f:
-              final = f.read()
-
-          assert 'LIMIT' in final, "LIMIT not added!"
-          assert 'BETWEEN' in final, "BETWEEN filter missing!"
-          assert 'idx_sales_created_at' in open('lib/core/database/database_helper.dart').read(), \
-              "Index missing!"
-
-          print("✅ التحقق النهائي: SQL filter + LIMIT + index — كلها موجودة")
-          PYEOF
-
-      - name: Commit and push fix
-        # ✅ FIX: Use GITHUB_TOKEN explicitly for the push
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add lib/services/sale_service.dart
-          git diff --staged --quiet || git commit -m "perf: add LIMIT to getSalesByDateRange for long-term performance"
-          # ✅ Use the workflow token explicitly
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/haythembediaf-coder/ClowtheX-flutter-2.git HEAD:main
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -96,21 +24,14 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Flutter 3.22.0
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.22.0'
           channel: 'stable'
           cache: true
 
-      - name: Write local.properties
-        run: |
-          echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
-          echo "sdk.dir=$ANDROID_SDK_ROOT" >> android/local.properties
-          echo "flutter.versionCode=1" >> android/local.properties
-          echo "flutter.versionName=1.0.0" >> android/local.properties
-
-      - name: Flutter pub get
+      - name: Install dependencies
         run: flutter pub get
 
       - name: Build RELEASE APK
@@ -119,6 +40,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: clowthex-after-fix
+          name: clowthex-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
