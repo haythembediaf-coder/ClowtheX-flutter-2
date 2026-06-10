@@ -1,0 +1,42 @@
+pluginManagement {
+    def flutterSdkPath = {
+        // في GitHub Actions: flutter-action يضع المسار في FLUTTER_ROOT
+        // محلياً: يُقرأ من local.properties
+        def envPath = System.getenv("FLUTTER_ROOT")
+        if (envPath != null && !envPath.isEmpty()) {
+            return envPath
+        }
+        def localPropsFile = file("local.properties")
+        if (localPropsFile.exists()) {
+            def properties = new Properties()
+            localPropsFile.withInputStream { properties.load(it) }
+            def path = properties.getProperty("flutter.sdk")
+            if (path != null) return path
+        }
+        // fallback: ابحث في PATH
+        def flutterExec = ["which", "flutter"].execute()
+        flutterExec.waitFor()
+        def flutterPath = flutterExec.text.trim()
+        if (flutterPath) {
+            return new File(flutterPath).parentFile.parentFile.absolutePath
+        }
+        throw new GradleException("Flutter SDK not found. Set FLUTTER_ROOT or flutter.sdk in local.properties")
+    }()
+
+    settings.ext.flutterSdkPath = flutterSdkPath
+    includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+    id "com.android.application" version "8.3.0" apply false
+    id "org.jetbrains.kotlin.android" version "1.9.23" apply false
+}
+
+include ":app"
