@@ -152,12 +152,17 @@ class SaleService implements SaleServiceBase {
     return Sale.fromMap(saleRows.first, items: itemRows.map(SaleItem.fromMap).toList());
   }
 
-  Future<List<Sale>> getSalesByDateRange(DateTime from, DateTime to) async {
+  Future<List<Sale>> getSalesByDateRange(
+    DateTime from,
+    DateTime to, {
+    int limit = 2000,  // حماية: أقصى 2000 فاتورة لأي نطاق زمني
+  }) async {
     final rows = await _db.rawQuery('''
       SELECT * FROM ${AppConstants.tableSales}
       WHERE created_at BETWEEN ? AND ?
       ORDER BY created_at DESC
-    ''', [from.toIso8601String(), to.toIso8601String()]);
+      LIMIT ?
+    ''', [from.toIso8601String(), to.toIso8601String(), limit]);
     return rows.map((r) => Sale.fromMap(r)).toList();
   }
 
